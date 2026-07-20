@@ -1,18 +1,9 @@
 """
-Run this once before running the suite for the first time, or whenever
-the login stops being recognized. Opens a real browser window using a
-persistent profile directory, you log in to ChatGPT by hand (including
-any 2FA or Cloudflare check), then press Enter in the terminal.
-
-This uses a persistent Chrome profile rather than exporting/importing
-cookies. Cloudflare's clearance cookie is tied to the exact browser
-fingerprint it was issued to - a cookie exported from one browser and
-imported into another gets re-challenged. Logging in once inside this
-exact profile, and reusing the same profile on every subsequent run,
-avoids that problem entirely.
-
-Everything after this is fully automated - this script is the one
-deliberate manual step the assignment allows for.
+Opens a real browser window using a persistent profile directory, then
+automatically waits for the actual ChatGPT chat screen to appear -
+it does not rely on the human pressing Enter at the right moment. That
+timing was the exact thing causing the profile to get saved before login
+actually completed. This polls for the real chat UI instead.
 
 Usage: python scripts/save_login_session.py
 """
@@ -25,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from playwright.sync_api import sync_playwright
 
 from config.settings import CHATGPT_URL, PROFILE_DIR
+from pages.chat_page import ChatPage
+
+WAIT_FOR_LOGIN_MS = 10 * 60 * 1000  # 10 minutes to log in
 
 
 def main():
@@ -38,11 +32,26 @@ def main():
         page = context.new_page()
         page.goto(CHATGPT_URL)
 
-        input(
-            "Log in to ChatGPT in the browser window, then come back here "
-            "and press Enter once you can see the chat screen..."
-        )
+        print("Browser launched. Log in to ChatGPT in the window (via noVNC).")
+        print("This will wait automatically - no need to press Enter.")
+        print("Waiting up to 10 minutes for the chat screen to appear...")
 
+        logged_in = False
+        for selector in ChatPage.PROMPT_TEXTBOX_SELECTORS:
+            try:
+                page.locator(selector).first.wait_for(state="visible", timeout=WAIT_FOR_LOGIN_MS)
+                logged_in = True
+                break
+            except Exception:
+                continue
+
+        if not logged_in:
+            print("Timed out waiting for the chat screen. Login was not detected.")
+            print(f"Current page title: {page.title()}")
+            context.close()
+            sys.exit(1)
+
+        print("Chat screen detected - login confirmed.")
         context.close()
         print(f"Profile saved to {PROFILE_DIR}")
 
