@@ -6,6 +6,14 @@ actual answer matches what was expected. Results get written back into
 the same Excel file, and a run produces an HTML report with logs and
 screenshots for anything that failed.
 
+## Before running for review
+
+`scripts/save_login_session.py`, then `scripts/verify_selectors.py`,
+then `pytest`, in that order. If `verify_selectors.py` reports a FAIL,
+fix that selector in `pages/chat_page.py` before running the suite -
+running the full test suite against a broken selector just produces
+three confusing timeouts instead of one clear answer about what to fix.
+
 ## Prerequisites
 
 - Python 3.10+
@@ -41,6 +49,19 @@ A browser window opens, you log in as you normally would (including any
 2FA), come back to the terminal and press Enter. This writes
 `auth/storage_state.json`, which is gitignored - it's a live session
 token and shouldn't be committed.
+
+### Verify selectors before a real run
+
+```bash
+python scripts/verify_selectors.py
+```
+
+Checks the prompt textbox, send button, and new chat link against the
+live page and prints PASS/FAIL per element, showing either the selector
+that worked or the full list that was tried. Worth running once after
+setup, and again first if the suite ever starts failing across the
+board - it separates "the DOM changed" from "the logic broke"
+immediately instead of after watching a test time out.
 
 ## Running the suite
 
@@ -84,6 +105,14 @@ logs/         one log file per run
 is effectively a single-page app; there wasn't a second logical page to
 justify splitting further.
 
+**Each element has a list of selector variants, not one hardcoded
+selector.** `BasePage.find_first_match()` tries each in order and raises
+a distinct `ElementNotFoundError` naming exactly what it was looking for
+if none match. chatgpt.com's DOM shifts more often than most production
+apps this pattern gets used on, and a single stale selector shouldn't
+mean rewriting `chat_page.py` from scratch - it should mean adding one
+more variant to a list.
+
 **Excel read and write are separate modules.** A failure reading test
 data should stop the whole run before anything happens. A failure
 writing one row's result shouldn't take down the rest of the suite.
@@ -125,10 +154,13 @@ behaviour without running against the real UI.
   ChatGPT session in order. Parallelizing would mean juggling multiple
   sessions against the same account, which isn't worth the complexity
   for a handful of test cases.
-- **Selectors may need updating.** ChatGPT's frontend changes its DOM
-  periodically. If the suite starts failing on every test at the same
-  step, check `pages/chat_page.py`'s selectors against the live page
-  before assuming the automation logic itself broke.
+- **Selectors were not confirmed against a live session at write time**
+  (this was built without network access to chatgpt.com) and use a
+  fallback list per element rather than a single hardcoded selector, so
+  minor DOM changes are less likely to break the whole suite. Run
+  `scripts/verify_selectors.py` before trusting a fresh checkout -
+  that's the fast way to catch anything that's actually stale before
+  it shows up as a confusing test failure.
 - **The Excel file is the source of truth for results**, updated in
   place rather than duplicated into a separate output file, since the
   assignment asks for `TestData.xlsx` itself to come back updated.
