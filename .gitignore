@@ -6,7 +6,7 @@ venv/
 .pytest_cache/
 
 # Playwright
-auth/storage_state.json
+auth/chrome_profile/
 playwright-report/
 
 # Test artifacts

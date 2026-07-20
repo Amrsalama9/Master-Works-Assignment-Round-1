@@ -46,9 +46,15 @@ python scripts/save_login_session.py
 ```
 
 A browser window opens, you log in as you normally would (including any
-2FA), come back to the terminal and press Enter. This writes
-`auth/storage_state.json`, which is gitignored - it's a live session
-token and shouldn't be committed.
+2FA and any Cloudflare check). Come back to the terminal and press Enter
+once you can see the actual chat screen. This creates
+`auth/chrome_profile/`, a persistent browser profile, which is gitignored.
+
+This is a real Chrome profile directory, not just a cookie file -
+Cloudflare's clearance cookie is tied to the exact browser fingerprint
+that earned it, so exporting cookies out of one browser and importing
+them into another (even another Chromium instance) gets re-challenged.
+Reusing the same profile on every run sidesteps that entirely.
 
 ### Verify selectors before a real run
 
@@ -95,7 +101,7 @@ validation/   the ChatGPT-grades-ChatGPT comparison logic
 tests/        conftest.py (fixtures, screenshot-on-failure) + the suite
 scripts/      one-off setup scripts (save session, regenerate TestData.xlsx)
 data/         TestData.xlsx
-auth/         storage_state.json (gitignored)
+auth/         chrome_profile/ (gitignored)
 reports/      pytest-html output
 screenshots/  captured on test failure
 logs/         one log file per run
@@ -125,10 +131,17 @@ guess at intent. If ChatGPT doesn't return a clean verdict, the test is
 marked FAIL rather than guessed as PASS - a false failure gets noticed
 and re-checked, a false pass doesn't.
 
-**Session reuse instead of scripted login.** Playwright's `storage_state`
-captures cookies and local storage from one authenticated session and
-replays them on every subsequent browser context. Login happens once,
-by hand; the automated run never touches the login form.
+**Persistent profile instead of exported cookies.** The first version of
+this used Playwright's `storage_state` to export cookies from a manual
+login and replay them into the automated browser. That didn't hold up -
+Cloudflare's clearance cookie is bound to the specific browser instance
+it was issued to, and importing it into a different Chromium process
+just got re-challenged with a "Just a moment..." page. Logging in once
+inside the exact same profile the automated runs reuse (via
+`launch_persistent_context`) avoids that mismatch, because it's
+genuinely the same browser fingerprint every time, not a copy of one.
+Login happens once, by hand, inside that profile; the automated run
+never touches the login form.
 
 ## Testing strategy
 

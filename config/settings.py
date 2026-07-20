@@ -11,7 +11,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 TEST_DATA_PATH = ROOT_DIR / "data" / "TestData.xlsx"
 
 # Auth
-STORAGE_STATE_PATH = ROOT_DIR / "auth" / "storage_state.json"
+# A persistent browser profile, not a cookie file. Cloudflare's
+# cf_clearance cookie is tied to the exact browser fingerprint it was
+# issued to, so exporting cookies from one browser and importing them
+# into Playwright's Chromium just gets re-challenged. Logging in once
+# inside this exact profile, and reusing the same profile on every run,
+# avoids that mismatch entirely.
+PROFILE_DIR = ROOT_DIR / "auth" / "chrome_profile"
 
 # Output
 SCREENSHOTS_DIR = ROOT_DIR / "screenshots"
@@ -26,7 +32,11 @@ DEFAULT_TIMEOUT_MS = 15_000
 RESPONSE_TIMEOUT_MS = 60_000  # ChatGPT can take a while to finish a long answer
 
 # Browser
-HEADLESS = True
+# Cloudflare is more likely to challenge a headless browser than a
+# headed one, even with a legitimate persistent profile. Default to
+# headed - it still runs unattended fine under Xvfb, it just needs a
+# display to render onto, not a human watching it.
+HEADLESS = False
 SLOW_MO_MS = 0
 
 # Excel column headers, kept as constants so a typo doesn't silently break

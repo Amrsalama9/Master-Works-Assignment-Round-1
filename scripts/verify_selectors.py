@@ -1,16 +1,15 @@
 """
 Run this after save_login_session.py and before the real test suite.
-Opens chatgpt.com with the saved session and checks every selector this
-framework depends on, printing a clear PASS/FAIL per element instead of
-letting a stale selector surface as a confusing failure buried inside a
-test run.
+Opens chatgpt.com using the saved persistent profile and checks every
+selector this framework depends on, printing a clear PASS/FAIL per
+element instead of letting a stale selector - or a failed login -
+surface as a confusing failure buried inside a test run.
 
 This exists because the automation was built and reviewed without live
 access to chatgpt.com from the development environment - the selectors
 are based on ChatGPT's known DOM conventions, not confirmed against the
 site at write time. This script is the fast way to confirm they still
-hold before anyone runs the full suite, and to see exactly what to fix
-if they don't.
+hold, and to see exactly what's on the page if they don't.
 
 Usage: python scripts/verify_selectors.py
 """
@@ -22,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from playwright.sync_api import sync_playwright
 
-from config.settings import CHATGPT_URL, STORAGE_STATE_PATH
+from config.settings import CHATGPT_URL, PROFILE_DIR, SCREENSHOTS_DIR
 from pages.chat_page import ChatPage
 
 
@@ -44,14 +43,16 @@ def check_selector_group(page, label, selectors):
 
 
 def main():
-    if not STORAGE_STATE_PATH.exists():
-        print(f"No saved session found at {STORAGE_STATE_PATH}.")
+    if not PROFILE_DIR.exists():
+        print(f"No saved login profile found at {PROFILE_DIR}.")
         print("Run scripts/save_login_session.py first.")
         sys.exit(1)
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=True)
-        context = browser.new_context(storage_state=str(STORAGE_STATE_PATH))
+        context = playwright.chromium.launch_persistent_context(
+            user_data_dir=str(PROFILE_DIR),
+            headless=False,
+        )
         page = context.new_page()
         page.goto(CHATGPT_URL)
         page.wait_for_timeout(3000)  # let the app finish its initial render
@@ -63,10 +64,18 @@ def main():
         page_text_sample = page.inner_text("body")[:300].replace("\n", " ")
         print(f"Visible text sample: {page_text_sample}\n")
 
-        SCREENSHOT_PATH = STORAGE_STATE_PATH.parent.parent / "screenshots" / "verify_selectors_page.png"
-        SCREENSHOT_PATH.parent.mkdir(exist_ok=True)
-        page.screenshot(path=str(SCREENSHOT_PATH))
-        print(f"Screenshot saved to {SCREENSHOT_PATH}\n")
+        SCREENSHOTS_DIR.mkdir(exist_ok=True)
+        screenshot_path = SCREENSHOTS_DIR / "verify_selectors_page.png"
+        page.screenshot(path=str(screenshot_path))
+        print(f"Screenshot saved to {screenshot_path}\n")
+
+        if "Just a moment" in page.title():
+            print(
+                "This is a Cloudflare challenge page, not the real ChatGPT app. "
+                "The profile likely isn't logged in yet, or the challenge wasn't "
+                "cleared. Re-run scripts/save_login_session.py and make sure you "
+                "reach the actual chat screen before pressing Enter.\n"
+            )
 
         results = [check_selector_group(page, label, selectors) for label, selectors in CHECKS]
 
@@ -82,7 +91,7 @@ def main():
                 "time out on every test case."
             )
 
-        browser.close()
+        context.close()
         sys.exit(0 if all(results) else 1)
 
 

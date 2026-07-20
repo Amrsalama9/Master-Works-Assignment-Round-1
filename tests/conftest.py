@@ -3,12 +3,7 @@ from datetime import datetime
 import pytest
 from playwright.sync_api import sync_playwright
 
-from config.settings import (
-    STORAGE_STATE_PATH,
-    SCREENSHOTS_DIR,
-    HEADLESS,
-    SLOW_MO_MS,
-)
+from config.settings import PROFILE_DIR, SCREENSHOTS_DIR, HEADLESS, SLOW_MO_MS
 from pages.chat_page import ChatPage
 from utils.logger import get_logger
 
@@ -16,26 +11,34 @@ logger = get_logger(__name__)
 
 
 @pytest.fixture(scope="session")
-def browser():
-    if not STORAGE_STATE_PATH.exists():
+def browser_context():
+    """
+    Session-scoped so every test case runs inside the same persistent
+    profile and the same browser process, matching how the assignment
+    actually works: one logged-in ChatGPT session, used sequentially.
+    """
+    if not PROFILE_DIR.exists():
         pytest.exit(
-            f"No saved login session found at {STORAGE_STATE_PATH}. "
-            f"Log in to chatgpt.com manually once and save the session - "
-            f"see the README's 'Prerequisites' section."
+            f"No saved login profile found at {PROFILE_DIR}. "
+            f"Run scripts/save_login_session.py first - see the README's "
+            f"'Prerequisites' section."
         )
 
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=HEADLESS, slow_mo=SLOW_MO_MS)
-        yield browser
-        browser.close()
+        context = playwright.chromium.launch_persistent_context(
+            user_data_dir=str(PROFILE_DIR),
+            headless=HEADLESS,
+            slow_mo=SLOW_MO_MS,
+        )
+        yield context
+        context.close()
 
 
 @pytest.fixture
-def page(browser):
-    context = browser.new_context(storage_state=str(STORAGE_STATE_PATH))
-    page = context.new_page()
+def page(browser_context):
+    page = browser_context.new_page()
     yield page
-    context.close()
+    page.close()
 
 
 @pytest.fixture
