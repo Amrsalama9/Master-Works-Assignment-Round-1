@@ -57,6 +57,16 @@ def main():
         page.wait_for_timeout(3000)  # let the app finish its initial render
 
         print(f"Checking selectors against {CHATGPT_URL}\n")
+        print(f"Page title: {page.title()}")
+        print(f"Current URL: {page.url}")
+
+        page_text_sample = page.inner_text("body")[:300].replace("\n", " ")
+        print(f"Visible text sample: {page_text_sample}\n")
+
+        SCREENSHOT_PATH = STORAGE_STATE_PATH.parent.parent / "screenshots" / "verify_selectors_page.png"
+        SCREENSHOT_PATH.parent.mkdir(exist_ok=True)
+        page.screenshot(path=str(SCREENSHOT_PATH))
+        print(f"Screenshot saved to {SCREENSHOT_PATH}\n")
 
         results = [check_selector_group(page, label, selectors) for label, selectors in CHECKS]
 
