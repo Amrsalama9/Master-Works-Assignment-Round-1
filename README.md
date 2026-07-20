@@ -6,13 +6,38 @@ actual answer matches what was expected. Results get written back into
 the same Excel file, and a run produces an HTML report with logs and
 screenshots for anything that failed.
 
+## Known limitation: run the login step from a normal network
+
+The one manual step in this framework - logging in once via
+`scripts/save_login_session.py` - needs to happen from an ordinary
+residential or mobile network connection, not from a cloud dev
+environment (GitHub Codespaces, most CI runners, most VPS providers).
+
+This isn't a bug in the automation. Cloudflare, which sits in front of
+chatgpt.com, scores requests partly on the reputation of the IP range
+they come from, and cloud/datacenter IP ranges score as high-risk
+regardless of what the browser looks like. During development, running
+`save_login_session.py` from a Codespace hit a hard `403 Forbidden` with
+a `Cf-Mitigated: challenge` response header directly on the login
+request - Cloudflare blocking the connection before the page even
+rendered, independent of the browser configuration.
+
+The fix is straightforward and doesn't touch any code: run
+`save_login_session.py` once from a normal network (home wifi, a phone
+hotspot, any non-datacenter connection), which creates
+`auth/chrome_profile/`. Copy that folder into wherever the suite will
+actually run. The automated test run itself - `pytest` - is much less
+likely to hit the same wall, since it's making a smaller number of
+requests using an already-authenticated session rather than a fresh
+Cloudflare challenge from an unrecognized browser.
+
 ## Before running for review
 
-`scripts/save_login_session.py`, then `scripts/verify_selectors.py`,
-then `pytest`, in that order. If `verify_selectors.py` reports a FAIL,
-fix that selector in `pages/chat_page.py` before running the suite -
-running the full test suite against a broken selector just produces
-three confusing timeouts instead of one clear answer about what to fix.
+`scripts/save_login_session.py` (from a normal network - see above),
+then `scripts/verify_selectors.py`, then `pytest`, in that order. If
+`verify_selectors.py` reports a FAIL, check whether the page title is
+"Just a moment..." (a Cloudflare challenge - see the limitation above)
+before assuming a selector is stale.
 
 ## Prerequisites
 
@@ -163,6 +188,10 @@ behaviour without running against the real UI.
 - **Login is manual, everything after it is not.** This is the one
   deliberate exception to "runs without manual intervention," and it's
   intentional - see the reasoning above.
+- **The login step must run from a normal network, not a cloud dev
+  environment.** See "Known limitation" at the top of this file -
+  confirmed during development against GitHub Codespaces specifically,
+  which got a `403` directly from Cloudflare on the login request.
 - **Sequential, not parallel.** All test cases run against one shared
   ChatGPT session in order. Parallelizing would mean juggling multiple
   sessions against the same account, which isn't worth the complexity
