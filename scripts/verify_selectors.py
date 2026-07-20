@@ -21,7 +21,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from playwright.sync_api import sync_playwright
 
-from config.settings import CHATGPT_URL, PROFILE_DIR, SCREENSHOTS_DIR
+from config.settings import (
+    CHATGPT_URL,
+    PROFILE_DIR,
+    SCREENSHOTS_DIR,
+    BROWSER_LAUNCH_ARGS,
+    BROWSER_IGNORE_DEFAULT_ARGS,
+)
 from pages.chat_page import ChatPage
 
 
@@ -52,6 +58,8 @@ def main():
         context = playwright.chromium.launch_persistent_context(
             user_data_dir=str(PROFILE_DIR),
             headless=False,
+            args=BROWSER_LAUNCH_ARGS,
+            ignore_default_args=BROWSER_IGNORE_DEFAULT_ARGS,
         )
         page = context.new_page()
         page.goto(CHATGPT_URL)

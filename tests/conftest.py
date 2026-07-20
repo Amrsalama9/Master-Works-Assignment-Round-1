@@ -3,7 +3,14 @@ from datetime import datetime
 import pytest
 from playwright.sync_api import sync_playwright
 
-from config.settings import PROFILE_DIR, SCREENSHOTS_DIR, HEADLESS, SLOW_MO_MS
+from config.settings import (
+    PROFILE_DIR,
+    SCREENSHOTS_DIR,
+    HEADLESS,
+    SLOW_MO_MS,
+    BROWSER_LAUNCH_ARGS,
+    BROWSER_IGNORE_DEFAULT_ARGS,
+)
 from pages.chat_page import ChatPage
 from utils.logger import get_logger
 
@@ -29,6 +36,8 @@ def browser_context():
             user_data_dir=str(PROFILE_DIR),
             headless=HEADLESS,
             slow_mo=SLOW_MO_MS,
+            args=BROWSER_LAUNCH_ARGS,
+            ignore_default_args=BROWSER_IGNORE_DEFAULT_ARGS,
         )
         yield context
         context.close()

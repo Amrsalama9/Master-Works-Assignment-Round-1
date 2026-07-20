@@ -39,6 +39,14 @@ RESPONSE_TIMEOUT_MS = 60_000  # ChatGPT can take a while to finish a long answer
 HEADLESS = False
 SLOW_MO_MS = 0
 
+# Cloudflare's Turnstile check detects Playwright's default automation
+# flag and will spin indefinitely on the "verify you are human" box if
+# it sees it. These remove that flag and the "Chrome is being controlled
+# by automated test software" banner without changing anything else.
+BROWSER_LAUNCH_ARGS = ["--disable-blink-features=AutomationControlled"]
+BROWSER_IGNORE_DEFAULT_ARGS = ["--enable-automation"]
+
+
 # Excel column headers, kept as constants so a typo doesn't silently break
 # the read/write utilities.
 COLUMN_TEST_ID = "Test ID"
