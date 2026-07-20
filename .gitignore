@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Playwright
+auth/storage_state.json
+playwright-report/
+
+# Test artifacts
+reports/*.html
+screenshots/*.png
+logs/*.log
+
+# Keep folder structure in git even though contents are ignored
+!reports/.gitkeep
+!screenshots/.gitkeep
+!logs/.gitkeep
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Env
+.env
