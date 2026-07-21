@@ -155,6 +155,88 @@ The end-to-end suite (`test_chatgpt_qa.py`) is the one part that
 genuinely needs a browser and a real ChatGPT session, since validating
 real UI behaviour has no substitute for running against the real UI.
 
+## Notes on running against the live site
+
+Automating a Cloudflare-protected, authentication-gated app like
+chatgpt.com surfaces a few real-world problems that a simpler target
+wouldn't. This section documents the ones worth knowing about and how
+each is handled, since they're the parts most likely to trip up someone
+running this for the first time.
+
+### Authentication
+
+The suite never scripts the login form. A single manual login is done
+once via `scripts/save_login_session.py`, which stores a persistent
+Chrome profile under `auth/chrome_profile/`. Every run after that reuses
+that profile, so the automated tests start already signed in.
+
+An earlier approach exported session cookies from a normal browser and
+loaded them into the automated browser via Playwright's `storage_state`.
+That did not work, for a specific reason worth understanding:
+Cloudflare's clearance cookie (`cf_clearance`) is bound to the browser
+instance that earned it - its TLS and JavaScript fingerprint, not just
+the cookie value. Replaying that cookie inside a different browser
+process is detected as a mismatch and re-challenged. Reusing the exact
+same profile the login happened in avoids this entirely, because it is
+genuinely the same browser fingerprint on every run rather than a copy
+of one.
+
+### The Cloudflare challenge, and how it was resolved
+
+The most involved problem was getting past Cloudflare's bot check to
+reach a logged-in session in the first place. It showed up in three
+distinct stages, each needing its own fix:
+
+1. **The automation banner.** Playwright launches Chromium with an
+   automation flag that Cloudflare's Turnstile check detects directly -
+   the browser shows a "Chrome is being controlled by automated test
+   software" banner, and the "Verify you are human" checkbox spins
+   forever without ever clearing. Fixed by launching with
+   `--disable-blink-features=AutomationControlled` and removing the
+   `--enable-automation` default arg (see `BROWSER_LAUNCH_ARGS` and
+   `BROWSER_IGNORE_DEFAULT_ARGS` in `config/settings.py`). This removed
+   the banner and let the checkbox respond.
+
+2. **The datacenter IP block.** Even with the automation signals hidden,
+   running the login from a cloud dev environment (GitHub Codespaces)
+   returned a hard `403 Forbidden` with a `Cf-Mitigated: challenge`
+   response header on the request to chatgpt.com itself - Cloudflare
+   refusing the connection before the page even rendered. This is IP
+   reputation: Cloudflare scores datacenter and cloud IP ranges as
+   high-risk regardless of how the browser is configured, and no
+   browser-side change gets around it. The fix was environmental, not
+   code: run the one-time login step from an ordinary residential or
+   mobile network instead. From a normal connection the challenge
+   cleared and a real logged-in session was established.
+
+3. **Guest-mode false positives during login detection.** ChatGPT's
+   signed-out landing page still shows a working chat textbox and
+   several "Log in" prompts, so an early version of the login script
+   mistook the guest page for a logged-in session and saved a profile
+   that wasn't actually authenticated. The login script now confirms the
+   signed-in state before saving (checking that the "Log in" button is
+   gone), and prints a diagnostic snapshot so the state is unambiguous.
+
+Once the login step is done from a normal network, the resulting
+`auth/chrome_profile/` can be copied to wherever the suite runs. The
+automated test run makes far fewer requests against an already-
+authenticated session, so it is much less exposed to the challenge than
+a fresh login attempt is.
+
+### Response completion and dynamic elements
+
+ChatGPT streams its responses token by token, so the suite can't just
+read the page immediately after sending. `_wait_for_response` waits for
+a new assistant message to appear, then for the stop-generating button
+to disappear (ChatGPT's signal that streaming is done), with a fallback
+for short answers that finish before that button is even observable.
+
+Starting a new chat for the validation step navigates directly to the
+homepage rather than clicking the sidebar link, because the sidebar's
+animation intermittently intercepted the click and caused timeouts. The
+link only points to `/` anyway, so direct navigation gets the same
+result reliably.
+
 ## Assumptions and known limitations
 
 - **Login is manual, everything after it is not.** This is the one
