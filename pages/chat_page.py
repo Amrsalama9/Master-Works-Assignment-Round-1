@@ -62,8 +62,15 @@ class ChatPage(BasePage):
         self.find_first_match("prompt textbox", self.PROMPT_TEXTBOX_SELECTORS)
 
     def start_new_chat(self):
-        new_chat_locator = self.find_first_match("new chat link", self.NEW_CHAT_SELECTORS)
-        new_chat_locator.first.click()
+        """
+        Navigates directly to the homepage instead of clicking the
+        sidebar "New Chat" link. The link just points to '/' anyway, and
+        clicking it was unreliable - an animated sidebar wrapper
+        intercepted the click often enough to time out, even though the
+        link itself was visible and enabled. Navigating directly gets
+        the same result without fighting the animation.
+        """
+        self.page.goto(CHATGPT_URL)
         self.find_first_match("prompt textbox", self.PROMPT_TEXTBOX_SELECTORS)
 
     def ask(self, question: str) -> str:
