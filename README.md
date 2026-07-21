@@ -33,6 +33,16 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
+The versions in `requirements.txt` are the ones this was built and
+tested against. On a very recent Python (3.13+), one of the pinned
+dependencies may try to compile from source and fail if you don't have C
+build tools installed. If that happens, installing the packages
+unpinned works fine and pulls versions with prebuilt wheels:
+
+```bash
+pip install playwright pytest pytest-html openpyxl
+```
+
 ### Log in once
 
 Scripting credential entry against ChatGPT's login form directly is
@@ -50,6 +60,11 @@ verification step, then come back to the terminal and press Enter once
 your account is visibly signed in (name or chat history showing, not
 the "Log in" prompt). This creates `auth/chrome_profile/`, a persistent
 Chrome profile, which is gitignored since it holds live session data.
+
+Because that profile is gitignored, a fresh clone has no saved session -
+so anyone running this signs in with their own ChatGPT account at this
+step. The assignment allows using your own account, and nothing about
+the login is shared or committed.
 
 A persistent profile is used rather than exporting cookies into a
 separate session, because Cloudflare's clearance cookie is bound to the
