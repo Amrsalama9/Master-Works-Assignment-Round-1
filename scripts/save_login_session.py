@@ -1,9 +1,12 @@
 """
-Opens a real browser window using a persistent profile directory, then
-automatically waits for the actual ChatGPT chat screen to appear -
-it does not rely on the human pressing Enter at the right moment. That
-timing was the exact thing causing the profile to get saved before login
-actually completed. This polls for the real chat UI instead.
+Opens a real browser window using a persistent profile directory. You
+log in to ChatGPT there, then come back and confirm here before it
+saves. Automated login detection was tried and kept getting fooled by
+ChatGPT's guest mode, which shows a working chat textbox and several
+"Log in" prompts even when signed out - it's not a reliable signal on
+its own. This now shows you a diagnostic snapshot of the page and asks
+you to confirm what you see, since you can look at the actual browser
+window directly.
 
 Usage: python scripts/save_login_session.py
 """
@@ -21,9 +24,6 @@ from config.settings import (
     BROWSER_LAUNCH_ARGS,
     BROWSER_IGNORE_DEFAULT_ARGS,
 )
-from pages.chat_page import ChatPage
-
-WAIT_FOR_LOGIN_MS = 10 * 60 * 1000  # 10 minutes to log in
 
 
 def main():
@@ -39,41 +39,35 @@ def main():
         page = context.new_page()
         page.goto(CHATGPT_URL)
 
-        print("Browser launched. Log in to ChatGPT in the window (via noVNC).")
-        print("This will wait automatically - no need to press Enter.")
-        print("Waiting up to 10 minutes for the chat screen to appear...")
+        print("Browser launched.")
+        print("Log in to ChatGPT in the window - use the actual 'Log in' button,")
+        print("enter your credentials, and complete any verification step.")
+        print()
+        print("Once you can see your account (name, avatar, or email showing")
+        print("somewhere on the page, and the 'Log in' / 'Sign up' buttons gone),")
+        input("come back here and press Enter...")
 
-        logged_in = False
-        for selector in ChatPage.PROMPT_TEXTBOX_SELECTORS:
-            try:
-                page.locator(selector).first.wait_for(state="visible", timeout=WAIT_FOR_LOGIN_MS)
-                logged_in = True
-                break
-            except Exception:
-                continue
+        page.wait_for_timeout(1000)
+        title = page.title()
+        text_sample = page.inner_text("body")[:250].replace("\n", " ")
+        still_shows_login_button = page.get_by_role("button", name="Log in").count() > 0
 
-        if logged_in:
-            # The textbox alone isn't proof of login - ChatGPT's guest
-            # mode shows one too. Check for the "Log in" link that only
-            # appears when signed out.
-            still_logged_out = page.locator("text=Log in").count() > 0
-            if still_logged_out:
-                print("A chat textbox is visible, but this still looks like a guest")
-                print("session - a 'Log in' link is present. Waiting for real login...")
-                logged_in = False
-                try:
-                    page.locator("text=Log in").first.wait_for(state="hidden", timeout=WAIT_FOR_LOGIN_MS)
-                    logged_in = True
-                except Exception:
-                    logged_in = False
+        print()
+        print(f"Page title: {title}")
+        print(f"Visible text: {text_sample}")
+        print(f"'Log in' button still present: {still_shows_login_button}")
+        print()
 
-        if not logged_in:
-            print("Timed out waiting for the chat screen. Login was not detected.")
-            print(f"Current page title: {page.title()}")
-            context.close()
-            sys.exit(1)
+        if still_shows_login_button:
+            print("This still looks like a signed-out page - a 'Log in' button")
+            print("was found. If you're actually logged in and this is wrong,")
+            print("type 'y' to save anyway. Otherwise fix the login and rerun.")
+            answer = input("Save this profile anyway? [y/N]: ").strip().lower()
+            if answer != "y":
+                context.close()
+                print("Not saved. Run this script again once logged in.")
+                sys.exit(1)
 
-        print("Chat screen detected - login confirmed.")
         context.close()
         print(f"Profile saved to {PROFILE_DIR}")
 
