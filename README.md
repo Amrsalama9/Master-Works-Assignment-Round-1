@@ -164,7 +164,9 @@ are what gets exercised on every small change during development. The
 Excel tests use a temp file per test rather than the real
 `TestData.xlsx`, and the validator tests mock `ChatPage` so the parsing
 logic can be checked against known ChatGPT response shapes, including a
-malformed one, without needing a live session.
+malformed one, without needing a live session. The retry helper that
+wraps the live calls has its own unit tests too (success first try,
+success after one retry, and re-raising when every attempt fails).
 
 The end-to-end suite (`test_chatgpt_qa.py`) is the one part that
 genuinely needs a browser and a real ChatGPT session, since validating
