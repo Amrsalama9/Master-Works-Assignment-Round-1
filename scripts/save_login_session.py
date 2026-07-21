@@ -52,6 +52,21 @@ def main():
             except Exception:
                 continue
 
+        if logged_in:
+            # The textbox alone isn't proof of login - ChatGPT's guest
+            # mode shows one too. Check for the "Log in" link that only
+            # appears when signed out.
+            still_logged_out = page.locator("text=Log in").count() > 0
+            if still_logged_out:
+                print("A chat textbox is visible, but this still looks like a guest")
+                print("session - a 'Log in' link is present. Waiting for real login...")
+                logged_in = False
+                try:
+                    page.locator("text=Log in").first.wait_for(state="hidden", timeout=WAIT_FOR_LOGIN_MS)
+                    logged_in = True
+                except Exception:
+                    logged_in = False
+
         if not logged_in:
             print("Timed out waiting for the chat screen. Login was not detected.")
             print(f"Current page title: {page.title()}")

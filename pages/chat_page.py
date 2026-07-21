@@ -33,6 +33,8 @@ class ChatPage(BasePage):
         "[data-testid='send-button']",
         "button[aria-label='Send prompt']",
         "button[aria-label*='Send']",
+        "form button[type='submit']",
+        "button:has(svg):near(#prompt-textarea)",
     ]
 
     STOP_GENERATING_SELECTORS = [
