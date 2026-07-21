@@ -11,6 +11,7 @@ playwright-report/
 
 # Test artifacts
 reports/*.html
+!reports/submitted_report.html
 screenshots/*.png
 logs/*.log
 
