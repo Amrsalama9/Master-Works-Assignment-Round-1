@@ -1,43 +1,18 @@
 # ChatGPT Data-Driven UI Automation
 
-Automates asking ChatGPT a set of questions from an Excel file, capturing
-its answers, and grading each one by asking ChatGPT itself whether the
-actual answer matches what was expected. Results get written back into
-the same Excel file, and a run produces an HTML report with logs and
-screenshots for anything that failed.
+A Playwright + pytest suite that reads test questions from an Excel
+file, asks each one to ChatGPT, and grades the response by asking
+ChatGPT itself whether the answer matches what was expected. Results
+are written back into the same Excel file, and each run produces an
+HTML report with logs and failure screenshots.
 
-## Known limitation: run the login step from a normal network
+## Quick start
 
-The one manual step in this framework - logging in once via
-`scripts/save_login_session.py` - needs to happen from an ordinary
-residential or mobile network connection, not from a cloud dev
-environment (GitHub Codespaces, most CI runners, most VPS providers).
-
-This isn't a bug in the automation. Cloudflare, which sits in front of
-chatgpt.com, scores requests partly on the reputation of the IP range
-they come from, and cloud/datacenter IP ranges score as high-risk
-regardless of what the browser looks like. During development, running
-`save_login_session.py` from a Codespace hit a hard `403 Forbidden` with
-a `Cf-Mitigated: challenge` response header directly on the login
-request - Cloudflare blocking the connection before the page even
-rendered, independent of the browser configuration.
-
-The fix is straightforward and doesn't touch any code: run
-`save_login_session.py` once from a normal network (home wifi, a phone
-hotspot, any non-datacenter connection), which creates
-`auth/chrome_profile/`. Copy that folder into wherever the suite will
-actually run. The automated test run itself - `pytest` - is much less
-likely to hit the same wall, since it's making a smaller number of
-requests using an already-authenticated session rather than a fresh
-Cloudflare challenge from an unrecognized browser.
-
-## Before running for review
-
-`scripts/save_login_session.py` (from a normal network - see above),
-then `scripts/verify_selectors.py`, then `pytest`, in that order. If
-`verify_selectors.py` reports a FAIL, check whether the page title is
-"Just a moment..." (a Cloudflare challenge - see the limitation above)
-before assuming a selector is stale.
+```bash
+python scripts/save_login_session.py   # one-time, from a normal network - see below
+python scripts/verify_selectors.py     # confirms the page structure before a real run
+pytest
+```
 
 ## Prerequisites
 
@@ -60,39 +35,49 @@ playwright install chromium
 
 ### Log in once
 
-Automating the ChatGPT login form directly is deliberately avoided here.
-Scripting credential entry against a Cloudflare-protected login page is
-the kind of thing that gets an account flagged, and it would make the
-whole suite less reliable, not more automated. Instead, log in manually
-one time and the browser session gets saved for every run after that:
+Scripting credential entry against ChatGPT's login form directly is
+deliberately avoided - it's the kind of thing that risks getting an
+account flagged, and it wouldn't make the suite any more automated,
+just more fragile. Instead, log in manually one time and the browser
+profile is reused on every run after that:
 
 ```bash
 python scripts/save_login_session.py
 ```
 
-A browser window opens, you log in as you normally would (including any
-2FA and any Cloudflare check). Come back to the terminal and press Enter
-once you can see the actual chat screen. This creates
-`auth/chrome_profile/`, a persistent browser profile, which is gitignored.
+A browser window opens. Log in as you normally would, including any
+verification step, then come back to the terminal and press Enter once
+your account is visibly signed in (name or chat history showing, not
+the "Log in" prompt). This creates `auth/chrome_profile/`, a persistent
+Chrome profile, which is gitignored since it holds live session data.
 
-This is a real Chrome profile directory, not just a cookie file -
-Cloudflare's clearance cookie is tied to the exact browser fingerprint
-that earned it, so exporting cookies out of one browser and importing
-them into another (even another Chromium instance) gets re-challenged.
-Reusing the same profile on every run sidesteps that entirely.
+A persistent profile is used rather than exporting cookies into a
+separate session, because Cloudflare's clearance cookie is bound to the
+specific browser instance that earned it - copying it into a different
+browser process gets re-challenged. Reusing the exact same profile on
+every run avoids that mismatch entirely.
 
-### Verify selectors before a real run
+**Note on network:** the login step should be run from an ordinary
+residential or mobile connection rather than a cloud dev environment
+(GitHub Codespaces, most CI runners, most VPS providers). Cloudflare
+scores requests partly on IP reputation, and datacenter IP ranges score
+as high-risk independent of the browser configuration - this can
+surface as a `403` on the login request itself. Once `auth/chrome_profile/`
+exists, it can be copied to wherever the suite actually needs to run;
+the automated test run makes far fewer requests against an
+already-authenticated session and is much less exposed to this.
+
+### Verify the page structure before a real run
 
 ```bash
 python scripts/verify_selectors.py
 ```
 
 Checks the prompt textbox, send button, and new chat link against the
-live page and prints PASS/FAIL per element, showing either the selector
-that worked or the full list that was tried. Worth running once after
-setup, and again first if the suite ever starts failing across the
-board - it separates "the DOM changed" from "the logic broke"
-immediately instead of after watching a test time out.
+live page and reports which selector matched (or the full list tried,
+if none did). Worth running once after setup and again anytime the
+suite starts failing across the board - it separates "the page changed"
+from "something else broke" immediately.
 
 ## Running the suite
 
@@ -100,17 +85,17 @@ immediately instead of after watching a test time out.
 pytest
 ```
 
-This reads every row from `data/TestData.xlsx`, asks ChatGPT each
-question, validates the answer, writes the result back into the same
-file, and generates `reports/report.html`.
+Reads every row from `data/TestData.xlsx`, asks ChatGPT each question,
+validates the answer, writes the result back into the same file, and
+generates `reports/report.html`.
 
-To run a single test case:
+Run a single test case:
 
 ```bash
 pytest tests/test_chatgpt_qa.py -k TC001
 ```
 
-To run just the unit tests (no browser needed):
+Run just the unit tests (no browser needed):
 
 ```bash
 pytest tests/test_excel_utils.py tests/test_answer_validator.py
@@ -132,77 +117,59 @@ screenshots/  captured on test failure
 logs/         one log file per run
 ```
 
-**Page Object Model** - `ChatPage` is the only page object because this
-is effectively a single-page app; there wasn't a second logical page to
-justify splitting further.
+**Page Object Model.** `ChatPage` is the only page object, since this is
+effectively a single-page app - there wasn't a second logical page
+worth splitting out.
 
-**Each element has a list of selector variants, not one hardcoded
-selector.** `BasePage.find_first_match()` tries each in order and raises
-a distinct `ElementNotFoundError` naming exactly what it was looking for
-if none match. chatgpt.com's DOM shifts more often than most production
-apps this pattern gets used on, and a single stale selector shouldn't
-mean rewriting `chat_page.py` from scratch - it should mean adding one
-more variant to a list.
+**Selectors use a fallback list per element rather than one hardcoded
+value.** `BasePage.find_first_match()` tries each variant in order and
+raises a distinct `ElementNotFoundError` naming exactly what it was
+looking for if none match. chatgpt.com's DOM shifts more often than
+most production apps this pattern gets used on, so a stale selector
+should mean adding one more variant to a list, not rewriting the page
+object.
 
 **Excel read and write are separate modules.** A failure reading test
 data should stop the whole run before anything happens. A failure
 writing one row's result shouldn't take down the rest of the suite.
 Splitting them keeps those two failure modes independent.
 
-**The validation prompt forces a `MATCH` / `NO_MATCH` first line.** Free-form
-grading text is hard to parse reliably. Asking for a fixed keyword up
-front, with reasoning after it, means the parsing logic doesn't have to
-guess at intent. If ChatGPT doesn't return a clean verdict, the test is
-marked FAIL rather than guessed as PASS - a false failure gets noticed
-and re-checked, a false pass doesn't.
-
-**Persistent profile instead of exported cookies.** The first version of
-this used Playwright's `storage_state` to export cookies from a manual
-login and replay them into the automated browser. That didn't hold up -
-Cloudflare's clearance cookie is bound to the specific browser instance
-it was issued to, and importing it into a different Chromium process
-just got re-challenged with a "Just a moment..." page. Logging in once
-inside the exact same profile the automated runs reuse (via
-`launch_persistent_context`) avoids that mismatch, because it's
-genuinely the same browser fingerprint every time, not a copy of one.
-Login happens once, by hand, inside that profile; the automated run
-never touches the login form.
+**The validation prompt forces a `MATCH` / `NO_MATCH` first line.**
+Free-form grading text is hard to parse reliably, so the prompt asks
+for a fixed keyword up front with reasoning after it - the parsing
+logic doesn't have to guess at intent. If ChatGPT doesn't return a
+clean verdict, the test is marked FAIL rather than guessed as PASS: a
+false failure gets noticed and re-checked, a false pass doesn't.
 
 ## Testing strategy
 
 The Excel utilities and the answer validator's parsing logic have unit
-tests that don't need a browser at all - they run in well under a
-second and are what actually gets exercised on every small change during
-development. The Excel tests use a temp file per test rather than the
-real `TestData.xlsx`, and the validator tests mock `ChatPage` so the
-parsing logic can be checked against known ChatGPT response shapes,
-including a malformed one, without needing a live session.
+tests that don't need a browser - they run in well under a second and
+are what gets exercised on every small change during development. The
+Excel tests use a temp file per test rather than the real
+`TestData.xlsx`, and the validator tests mock `ChatPage` so the parsing
+logic can be checked against known ChatGPT response shapes, including a
+malformed one, without needing a live session.
 
-The end-to-end suite (`test_chatgpt_qa.py`) is the one thing that
-genuinely needs a browser and a real ChatGPT session, since that's the
-actual scope of the assignment - there's no way to validate real UI
-behaviour without running against the real UI.
+The end-to-end suite (`test_chatgpt_qa.py`) is the one part that
+genuinely needs a browser and a real ChatGPT session, since validating
+real UI behaviour has no substitute for running against the real UI.
 
 ## Assumptions and known limitations
 
 - **Login is manual, everything after it is not.** This is the one
   deliberate exception to "runs without manual intervention," and it's
-  intentional - see the reasoning above.
-- **The login step must run from a normal network, not a cloud dev
-  environment.** See "Known limitation" at the top of this file -
-  confirmed during development against GitHub Codespaces specifically,
-  which got a `403` directly from Cloudflare on the login request.
+  intentional - see "Log in once" above.
+- **The login step should run from a normal network, not a cloud dev
+  environment.** See the network note above.
 - **Sequential, not parallel.** All test cases run against one shared
   ChatGPT session in order. Parallelizing would mean juggling multiple
   sessions against the same account, which isn't worth the complexity
   for a handful of test cases.
-- **Selectors were not confirmed against a live session at write time**
-  (this was built without network access to chatgpt.com) and use a
-  fallback list per element rather than a single hardcoded selector, so
-  minor DOM changes are less likely to break the whole suite. Run
-  `scripts/verify_selectors.py` before trusting a fresh checkout -
-  that's the fast way to catch anything that's actually stale before
-  it shows up as a confusing test failure.
+- **Selectors carry a fallback list rather than a single hardcoded
+  value**, since chatgpt.com's DOM changes fairly often. Run
+  `scripts/verify_selectors.py` on a fresh checkout to catch anything
+  stale before it surfaces as a confusing test failure.
 - **The Excel file is the source of truth for results**, updated in
   place rather than duplicated into a separate output file, since the
   assignment asks for `TestData.xlsx` itself to come back updated.
@@ -214,5 +181,5 @@ behaviour without running against the real UI.
 ## Screenshots
 
 Screenshots are only captured when a test fails, saved to
-`screenshots/` with the test name and timestamp, and referenced in
-`reports/report.html`. Nothing is captured for passing runs.
+`screenshots/` with the test name and timestamp, and referenced in the
+HTML report. Nothing is captured for passing runs.
